@@ -1,0 +1,6 @@
+{
+    "imports": {
+        "asserts": "https://deno.land/std@0.157.0/testing/asserts.ts",
+        "sinon": "https://cdn.skypack.dev/sinon@14.0.0"
+    }
+}
