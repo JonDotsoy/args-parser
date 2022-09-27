@@ -5,3 +5,4 @@ const commandSpec: CommandSpec = {
 }
 
 export default commandSpec;
+

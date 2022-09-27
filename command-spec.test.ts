@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertExists, assertNotStrictEquals } from "asserts";
+import { assert, assertEquals, assertExists, assertInstanceOf, assertMatch, assertNotStrictEquals, assertThrows } from "asserts";
 import { buildHelpDialog, CommandSpec, parseArgs } from "./command-spec.ts"
 
 
@@ -214,12 +214,6 @@ Deno.test("command-spec should build help dialog to not found command", async ()
     const commandSpec: CommandSpec = {
         name: "cli",
         description: "I am description",
-        arguments: [
-            {
-                name: "<abc>",
-                description: "im an argument"
-            }
-        ],
         options: [
             {
                 names: ["-a", "--abc"],
@@ -234,10 +228,20 @@ Deno.test("command-spec should build help dialog to not found command", async ()
         ]
     };
 
-    const helpMessage = await buildHelpDialog(commandSpec, ["ls", "no-found"]);
+    let error: unknown;
+    try {
+        // deno-lint-ignore no-empty
+        for await (const _ of buildHelpDialog(commandSpec, ["ls", "no-found"])) { };
+    } catch (ex) {
+        error = ex;
+    }
 
-    assertEquals(await helpMessage.next(), { done: false, value: "cli ls no-found: Is not valid command. See cli --help" });
-    assertEquals(await helpMessage.next(), { done: true, value: undefined });
+    assertExists(error);
+    assertInstanceOf(error, Error);
+    assertMatch(error.message, /cli ls no-found: Is not valid command. See cli ls --help/);
+
+    // assertEquals(await helpMessage.next(), { done: false, value: "cli ls no-found: Is not valid command. See cli --help" });
+    // assertEquals(await helpMessage.next(), { done: true, value: undefined });
 });
 
 
@@ -349,4 +353,70 @@ Deno.test("should parsing the arguments string at return an options with argumen
         a: ["foo", "baz"],
         abc: ["foo", "baz"],
     })
+})
+
+Deno.test("should parse arguments string and get the arguments", async () => {
+    const commandSpec: CommandSpec = {
+        name: "cli",
+        description: "I am description",
+        options: [
+            {
+                names: ["-a", "--abc"],
+                description: "abc option",
+                multiple: true,
+                argument: {
+                    name: "<abc>",
+                }
+            }
+        ],
+        subcommands: [
+            {
+                name: "ls",
+                description: "ls command"
+            }
+        ],
+        arguments: [
+            {
+                name: `<path>`,
+                description: `a path`
+            }
+        ]
+    };
+
+    const parsed = await parseArgs(commandSpec, ["--abc", "foo", "--abc", "baz", "me_path"]);
+
+    assertExists(parsed)
+    assertEquals(parsed.argumentsParsed, ["me_path"])
+})
+
+
+Deno.test("should parse argument string complex", () => {
+    const commandSpec: CommandSpec = {
+        name: "cli",
+        description: "I am description",
+        options: [
+            {
+                names: ["-a", "--abc"],
+                description: "abc option",
+                multiple: true,
+                argument: {
+                    name: "<abc>",
+                }
+            }
+        ],
+        subcommands: [
+            {
+                name: "ls",
+                description: "ls command"
+            }
+        ],
+        arguments: [
+            {
+                name: `<path>`,
+                description: `a path`
+            }
+        ]
+    };
+
+    parseArgs(commandSpec, ["-a", "foo",])
 })

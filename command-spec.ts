@@ -98,21 +98,8 @@ export const buildSelectHelpDialog = async function* (spec: CommandSpec | undefi
 };
 
 export const buildHelpDialog = async function* (spec: CommandSpec, args: string[]): AsyncGenerator<string> {
-    yield* buildSelectHelpDialog(spec, [spec.name], args)
-}
-
-export const selectCommandSpec = (spec: CommandSpec | undefined, commandsPath: string[], args: string[]): [spec: CommandSpec | undefined, commandsPath: string[], args: string[]] => {
-    let specMatch: CommandSpec | undefined = spec;
-    let commandsPathMatch: string[] = [...commandsPath];
-
-    for (const arg of args) {
-        if (arg.startsWith('-')) continue;
-        if (!specMatch) break;
-        commandsPathMatch.push(arg);
-        specMatch = specMatch?.subcommands?.find(e => e.name === arg);
-    }
-
-    return [specMatch, commandsPathMatch, args];
+    const a = parseArgs(spec, args);
+    yield* buildSelectHelpDialog(a.spec, a.commandPath, args)
 }
 
 export const parseArgs = (spec: CommandSpec, args: string[]): CommandParsedSpec => {
@@ -127,10 +114,10 @@ export const parseArgs = (spec: CommandSpec, args: string[]): CommandParsedSpec 
     let done: boolean | undefined
     let arg: string
     while ({ done, value: arg } = argsIterator.next(), !done) {
-        if (arg.startsWith('-')) {
+        const optionFlow = () => {
             const optionSpec = spec.options?.find(optionSpec => optionSpec.names.includes(arg))
-            if (!optionSpec) throw new Error("Not implemented yet")
-            const isOptionBoolean = !optionSpec.argument
+            if (!optionSpec) throw new Error("Not implemented yet");
+            const isOptionBoolean = !optionSpec.argument;
             const val = isOptionBoolean ? true : argsIterator.next().value;
             for (const name of optionSpec.names) {
                 const nameTrim = name.substring(name.startsWith('--') ? 2 : 1)
@@ -138,21 +125,38 @@ export const parseArgs = (spec: CommandSpec, args: string[]): CommandParsedSpec 
                     ? [...(commandParsedSpec.optionsParsed[nameTrim] ?? []), val]
                     : val;
             }
-        } else {
-            let subcommandFound = spec.subcommands?.find(subcommand => subcommand.name === arg)
-            if (!subcommandFound) {
-                throw new Error("Not implemented yet")
-            }
-            let parent = commandParsedSpec
+        }
+        const subcommandFlow = (commandSpec: CommandSpec) => {
+            let parent = commandParsedSpec;
             commandParsedSpec = {
                 parent,
-                spec: subcommandFound,
+                spec: commandSpec,
                 argumentsParsed: [],
-                commandPath: [...parent.commandPath, subcommandFound.name],
+                commandPath: [...parent.commandPath, commandSpec.name],
                 optionsParsed: [],
-            }
-            continue
+            };
         }
+        const argumentFlow = (_argumentSpec: ArgumentSpec) => {
+            commandParsedSpec.argumentsParsed.push(arg);
+        }
+
+        const optionFlowDetected = arg.startsWith('-')
+        const subcommandDetected = spec.subcommands?.find(subcommand => subcommand.name === arg)
+        const argumentFlowDetected = spec.arguments?.[commandParsedSpec.argumentsParsed.length]
+
+        if (optionFlowDetected) {
+            optionFlow();
+            continue;
+        }
+        if (subcommandDetected) {
+            subcommandFlow(subcommandDetected);
+            continue;
+        }
+        if (argumentFlowDetected) {
+            argumentFlow(argumentFlowDetected);
+            continue;
+        }
+        throw new Error(`${commandParsedSpec.commandPath.join(" ")} ${arg}: Is not valid command. See ${commandParsedSpec.commandPath.join(" ")} --help`);
     }
 
     // console.log(Deno.inspect(commandParsedSpec, { depth: Infinity, colors: true }))
