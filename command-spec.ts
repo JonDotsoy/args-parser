@@ -38,6 +38,12 @@ export interface CommandParsedSpec {
     argumentsParsed: any[]
 }
 
+export class CommandNotFoundError extends Error {
+    constructor(commandPath: string[], notFoundArg: string) {
+        super(`${commandPath.join(" ")} ${notFoundArg}: Is not valid command. See ${commandPath.join(" ")} --help`);
+    }
+}
+
 export const buildSelectHelpDialog = async function* (spec: CommandSpec | undefined, [binCli, ...commandsPath]: string[], _args: string[]): AsyncGenerator<string> {
     if (!spec) {
         yield `${[binCli, ...commandsPath].join(' ')}: Is not valid command. See ${binCli} --help`
@@ -156,7 +162,7 @@ export const parseArgs = (spec: CommandSpec, args: string[]): CommandParsedSpec 
             argumentFlow(argumentFlowDetected);
             continue;
         }
-        throw new Error(`${commandParsedSpec.commandPath.join(" ")} ${arg}: Is not valid command. See ${commandParsedSpec.commandPath.join(" ")} --help`);
+        throw new CommandNotFoundError(commandParsedSpec.commandPath, arg);
     }
 
     // console.log(Deno.inspect(commandParsedSpec, { depth: Infinity, colors: true }))
