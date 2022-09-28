@@ -1,8 +1,7 @@
-import { CommandSpec } from "./command-spec.ts"
+import { CommandSpec } from "./command-spec.ts";
 
 const commandSpec: CommandSpec = {
-    name: "cli.ts",
-}
+  name: "cli.ts",
+};
 
 export default commandSpec;
-

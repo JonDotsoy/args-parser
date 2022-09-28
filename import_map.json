@@ -1,6 +1,8 @@
 {
-    "imports": {
-        "asserts": "https://deno.land/std@0.157.0/testing/asserts.ts",
-        "sinon": "https://cdn.skypack.dev/sinon@14.0.0"
-    }
+  "imports": {
+    "asserts": "https://deno.land/std@0.157.0/testing/asserts.ts",
+    "sinon": "https://cdn.skypack.dev/sinon@14.0.0",
+    "mock": "https://deno.land/std@0.157.0/testing/mock.ts",
+    "zod": "https://deno.land/x/zod@v3.19.1/mod.ts"
+  }
 }

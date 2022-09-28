@@ -1,0 +1,11 @@
+name: cli
+description: the super cli
+subcommands:
+  - name: user
+    description: edit users, create users, etc...
+    subcommands:
+      - name: edit
+        arguments:
+          - name: user_id
+            handler:
+              $ref: userEdit.ts
