@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   ArgumentSpec,
   CommandParsedSpec,
@@ -11,6 +12,22 @@ export class CommandNotFoundError extends Error {
         commandPath.join(" ")
       } --help`,
     );
+  }
+}
+
+export class MissingArgumentError extends Error {
+  constructor(parseError: z.ZodError, commandParsedSpec: CommandParsedSpec) {
+    super("unknow error");
+    this.cause = parseError;
+    // `${commandPath.join(" ")} ${notFoundArg}: Is not valid command. See ${commandPath.join(" ")
+    // } --help`,
+    // );
+    const issue = parseError.issues.at(0);
+    if (issue?.code === "too_small") {
+      this.message = `Missing ${
+        commandParsedSpec.spec.arguments?.map((m) => m.name).join(", ") ?? ""
+      } argument`;
+    }
   }
 }
 
@@ -110,14 +127,14 @@ export const buildHelpDialog = async function* (
   spec: CommandSpec,
   args: string[],
 ): AsyncGenerator<string> {
-  const a = parseArgs(spec, args);
+  const { commandParsedSpec: a } = parseArgs(spec, args);
   yield* buildSelectHelpDialog(a.spec, a.commandPath, args);
 };
 
 export const parseArgs = (
   spec: CommandSpec,
   args: string[],
-): CommandParsedSpec => {
+): { commandParsedSpec: CommandParsedSpec; validate: () => void } => {
   let commandParsedSpec: CommandParsedSpec = {
     argumentsParsed: [],
     commandPath: [spec.name],
@@ -181,16 +198,65 @@ export const parseArgs = (
     throw new CommandNotFoundError(commandParsedSpec.commandPath, arg);
   }
 
+  const validate = () => {
+    const { argumentsSchema } = createSchemaValidation(commandParsedSpec);
+
+    try {
+      return argumentsSchema.parse(commandParsedSpec.argumentsParsed);
+    } catch (ex) {
+      if (ex instanceof z.ZodError) {
+        throw new MissingArgumentError(ex, commandParsedSpec);
+      }
+      throw ex;
+    }
+  };
+
   // console.log(Deno.inspect(commandParsedSpec, { depth: Infinity, colors: true }))
-  return commandParsedSpec;
+  return { commandParsedSpec, validate };
 };
 
 export const bindArgs = async (spec: CommandSpec, args: string[]) => {
-  const parsed = await parseArgs(spec, args);
+  const { commandParsedSpec: parsed, validate } = await parseArgs(spec, args);
+
+  validate();
 
   await parsed.spec.handler?.(
     parsed.argumentsParsed,
     parsed.optionsParsed,
     parsed,
   );
+};
+
+export const createSchemaValidation = (
+  commandParsedSpec: CommandParsedSpec,
+) => {
+  const optionObjectSchema: Record<string, z.Schema> = {};
+  const argumentTupleSchema: z.Schema[] = [];
+
+  commandParsedSpec.spec.arguments?.forEach((_argumentSpec) => {
+    argumentTupleSchema.push(z.string());
+  });
+
+  for (
+    let selectCommandParsedSpec: CommandParsedSpec | undefined =
+      commandParsedSpec;
+    selectCommandParsedSpec;
+    selectCommandParsedSpec = selectCommandParsedSpec.parent
+  ) {
+    selectCommandParsedSpec.spec.options?.forEach((optionSpec) => {
+      optionSpec.names.forEach((nameDef) => {
+        const name = nameDef.startsWith("--")
+          ? nameDef.substring(2)
+          : nameDef.substring(1);
+        optionObjectSchema[name] = optionSpec.argument
+          ? z.string()
+          : z.literal(true);
+      });
+    });
+  }
+
+  return {
+    optionSchema: z.object(optionObjectSchema),
+    argumentsSchema: z.tuple(argumentTupleSchema as []),
+  };
 };

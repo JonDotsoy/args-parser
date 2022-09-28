@@ -7,9 +7,19 @@ import {
   assertNotStrictEquals,
   assertObjectMatch,
 } from "asserts";
+import { z } from "zod";
 import { spy } from "mock";
-import { bindArgs, buildHelpDialog, parseArgs } from "./command-spec.ts";
-import { CommandSpec } from "./schemas/command-spec.ts";
+import {
+  bindArgs,
+  buildHelpDialog,
+  createSchemaValidation,
+  parseArgs,
+} from "./command-spec.ts";
+import {
+  CommandParsedSpec,
+  CommandSpec,
+  OptionSpec,
+} from "./schemas/command-spec.ts";
 
 Deno.test("command-spec should build help dialog", async () => {
   const commandSpec: CommandSpec = {
@@ -272,7 +282,7 @@ Deno.test("command-spec should build help dialog to the subcommand", async () =>
     ],
   };
 
-  const helpMessage = await buildHelpDialog(commandSpec, ["ls"]);
+  const helpMessage = await buildHelpDialog(commandSpec, ["abc", "ls"]);
 
   assertEquals(await helpMessage.next(), { done: false, value: "ls command" });
   assertEquals(await helpMessage.next(), { done: false, value: "" });
@@ -339,7 +349,7 @@ Deno.test("should parsing the arguments string to return the parsed command obje
     ],
   };
 
-  const parsed = await parseArgs(commandSpec, ["ls"]);
+  const { commandParsedSpec: parsed } = await parseArgs(commandSpec, ["ls"]);
 
   assertExists(parsed);
   assertEquals(parsed.commandPath, ["cli", "ls"]);
@@ -365,7 +375,10 @@ Deno.test("should parsing the arguments string with options", async () => {
     ],
   };
 
-  const parsed = await parseArgs(commandSpec, ["--abc", "ls"]);
+  const { commandParsedSpec: parsed } = await parseArgs(commandSpec, [
+    "--abc",
+    "ls",
+  ]);
 
   assertExists(parsed);
   assertExists(parsed.parent);
@@ -393,7 +406,10 @@ Deno.test("should parsing the arguments string at return an options with argumen
     ],
   };
 
-  const parsed = await parseArgs(commandSpec, ["--abc", "foo"]);
+  const { commandParsedSpec: parsed } = await parseArgs(commandSpec, [
+    "--abc",
+    "foo",
+  ]);
 
   assertExists(parsed);
   assertNotStrictEquals(parsed.optionsParsed, { abc: "foo" });
@@ -421,7 +437,12 @@ Deno.test("should parsing the arguments string at return an options with argumen
     ],
   };
 
-  const parsed = await parseArgs(commandSpec, ["--abc", "foo", "--abc", "baz"]);
+  const { commandParsedSpec: parsed } = await parseArgs(commandSpec, [
+    "--abc",
+    "foo",
+    "--abc",
+    "baz",
+  ]);
 
   assertExists(parsed);
   assertEquals(parsed.optionsParsed, {
@@ -458,7 +479,7 @@ Deno.test("should parse arguments string and get the arguments", async () => {
     ],
   };
 
-  const parsed = await parseArgs(commandSpec, [
+  const { commandParsedSpec: parsed } = await parseArgs(commandSpec, [
     "--abc",
     "foo",
     "--abc",
@@ -498,7 +519,7 @@ Deno.test("should parse argument string complex", () => {
     ],
   };
 
-  parseArgs(commandSpec, ["-a", "foo"]);
+  parseArgs(commandSpec, ["-a", "foo", "./f"]);
 });
 
 Deno.test("invoke handler functions", async (t) => {
@@ -554,4 +575,134 @@ Deno.test("invoke handler functions", async (t) => {
       });
     },
   );
+});
+
+Deno.test("should make a schema validator from a command spec", () => {
+  const handlerSpy = spy();
+  const userEditCommandSpec: CommandSpec = {
+    name: "edit",
+    handler: handlerSpy,
+    arguments: [
+      {
+        name: "user_id",
+      },
+    ],
+  };
+  const userCommandSpec: CommandSpec = {
+    name: "user",
+    subcommands: [
+      userEditCommandSpec,
+    ],
+  };
+  const commandSpec: CommandSpec = {
+    name: "cli",
+    options: [
+      {
+        names: ["-o", "--output"],
+        argument: {
+          name: "format",
+        },
+      },
+    ],
+    subcommands: [
+      userCommandSpec,
+    ],
+  };
+  const commandParsedSpec: CommandParsedSpec = {
+    parent: {
+      parent: {
+        spec: commandSpec,
+        commandPath: ["cli"],
+        argumentsParsed: [],
+        optionsParsed: { output: "yaml" },
+      },
+      spec: userCommandSpec,
+      commandPath: ["cli", "user"],
+      argumentsParsed: [],
+      optionsParsed: { output: "yaml" },
+    },
+    spec: userEditCommandSpec,
+    commandPath: ["cli", "user", "edit"],
+    argumentsParsed: [],
+    optionsParsed: { output: "yaml" },
+  };
+
+  const schemas = createSchemaValidation(commandParsedSpec);
+
+  assertExists(schemas);
+  assertInstanceOf(schemas.optionSchema, z.ZodObject);
+  assertInstanceOf(schemas.argumentsSchema, z.ZodTuple);
+  // console.log(schemas.optionSchema._def);
+  assertObjectMatch(schemas.optionSchema._def.shape(), {
+    o: {
+      _def: {
+        typeName: "ZodString",
+      },
+    },
+    output: {
+      _def: {
+        typeName: "ZodString",
+      },
+    },
+  });
+  assertObjectMatch(schemas.argumentsSchema, {
+    _def: {
+      items: [{
+        _def: {
+          typeName: "ZodString",
+        },
+      }],
+      typeName: "ZodTuple",
+    },
+  });
+});
+
+Deno.test("should make a argument parser", async () => {
+  const handlerSpy = spy();
+  const commandSpec: CommandSpec = {
+    name: "cli",
+    options: [
+      {
+        names: ["-o", "--output"],
+        argument: {
+          name: "format",
+        },
+      },
+    ],
+    subcommands: [
+      {
+        name: "user",
+        subcommands: [
+          {
+            name: "edit",
+            handler: handlerSpy,
+            arguments: [
+              {
+                name: "user_id",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  let error: unknown;
+  try {
+    const { validate } = await parseArgs(commandSpec, [
+      "--output",
+      "yaml",
+      "user",
+      "edit",
+    ]);
+    await validate();
+  } catch (ex) {
+    error = ex;
+  }
+
+  assertExists(error);
+  assertInstanceOf(error, Error);
+  assertMatch(error.message, /Missing user_id argument/);
+  assertExists(error.cause);
+  assertInstanceOf(error.cause, z.ZodError);
 });
