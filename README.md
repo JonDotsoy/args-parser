@@ -31,4 +31,3 @@ Please install next dependencies:
 
 - husky (https://typicode.github.io/husky/#/?id=manual)
 - commitlint (https://commitlint.js.org/#/?id=install)
-
