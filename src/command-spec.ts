@@ -79,8 +79,8 @@ export const buildSelectHelpDialog = async function* (
     (a, { name: { length } }) => length > a ? length : a,
     0,
   ) ?? 0;
-  const optionsPadLen = spec.options?.reduce((a, { names }) => {
-    const l = n(names).length;
+  const optionsPadLen = spec.options?.reduce((a, { aliases }) => {
+    const l = n(aliases).length;
     return l > a ? l : a;
   }, 0) ?? 0;
   const subcommandPadLen = spec.subcommands?.reduce(
@@ -115,7 +115,7 @@ export const buildSelectHelpDialog = async function* (
   if (spec.options?.filter((o) => o.description).length) {
     yield "Options";
     for (const option of spec.options) {
-      yield `  ${n(option.names).padEnd(padLen, " ")}    ${
+      yield `  ${n(option.aliases).padEnd(padLen, " ")}    ${
         option.description ?? ""
       }`;
     }
@@ -148,12 +148,12 @@ export const parseArgs = (
   while ({ done, value: arg } = argsIterator.next(), !done) {
     const optionFlow = () => {
       const optionSpec = spec.options?.find((optionSpec) =>
-        optionSpec.names.includes(arg)
+        optionSpec.aliases.includes(arg)
       );
       if (!optionSpec) throw new Error("Not implemented yet");
       const isOptionBoolean = !optionSpec.argument;
       const val = isOptionBoolean ? true : argsIterator.next().value;
-      for (const name of optionSpec.names) {
+      for (const name of optionSpec.aliases) {
         const nameTrim = name.substring(name.startsWith("--") ? 2 : 1);
         const a = commandParsedSpec.optionsParsed[nameTrim];
         commandParsedSpec.optionsParsed[nameTrim] = optionSpec.multiple
@@ -198,17 +198,20 @@ export const parseArgs = (
     throw new CommandNotFoundError(commandParsedSpec.commandPath, arg);
   }
 
-  const validate = () => {
+  const validate = async () => {
     const { argumentsSchema } = createSchemaValidation(commandParsedSpec);
 
-    try {
-      return argumentsSchema.parse(commandParsedSpec.argumentsParsed);
-    } catch (ex) {
-      if (ex instanceof z.ZodError) {
-        throw new MissingArgumentError(ex, commandParsedSpec);
-      }
-      throw ex;
+    const argumentsParsed = await argumentsSchema.safeParseAsync(
+      commandParsedSpec.argumentsParsed,
+    );
+
+    if (!argumentsParsed.success) {
+      throw new MissingArgumentError(argumentsParsed.error, commandParsedSpec);
     }
+
+    return {
+      argumentsParsed,
+    };
   };
 
   // console.log(Deno.inspect(commandParsedSpec, { depth: Infinity, colors: true }))
@@ -229,8 +232,14 @@ export const bindArgs = async (spec: CommandSpec, args: string[]) => {
 
 export const createSchemaValidation = (
   commandParsedSpec: CommandParsedSpec,
-) => {
-  const optionObjectSchema: Record<string, z.Schema> = {};
+): {
+  optionSchema: z.Schema;
+  argumentsSchema: z.Schema;
+} => {
+  const optionObjectSchema: Record<
+    string,
+    z.Schema<unknown, z.ZodTypeDef, string | true>
+  > = {};
   const argumentTupleSchema: z.Schema[] = [];
 
   commandParsedSpec.spec.arguments?.forEach((_argumentSpec) => {
@@ -244,14 +253,8 @@ export const createSchemaValidation = (
     selectCommandParsedSpec = selectCommandParsedSpec.parent
   ) {
     selectCommandParsedSpec.spec.options?.forEach((optionSpec) => {
-      optionSpec.names.forEach((nameDef) => {
-        const name = nameDef.startsWith("--")
-          ? nameDef.substring(2)
-          : nameDef.substring(1);
-        optionObjectSchema[name] = optionSpec.argument
-          ? z.string()
-          : z.literal(true);
-      });
+      const schema = optionSpec.argument ? z.string() : z.literal(true);
+      optionObjectSchema[optionSpec.name] = schema;
     });
   }
 

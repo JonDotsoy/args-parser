@@ -21,14 +21,18 @@ export const Handler: z.ZodType<Handler> = z.function(
   ]),
 );
 
-export interface SingleArgumentSpec {
+export interface SingleArgumentSpec<
+  A extends z.Schema = z.Schema<unknown, z.ZodTypeDef, string | true>,
+> {
   name: string;
   description?: string;
+  validator?: A;
 }
 
 export const SingleArgumentSpec: z.ZodType<SingleArgumentSpec> = z.object({
   name: z.string(),
   description: z.optional(z.string()),
+  validator: z.optional(z.any()),
 });
 
 export interface ArgumentSpec {
@@ -44,14 +48,19 @@ export const ArgumentSpec: z.ZodType<ArgumentSpec> = z.object({
 });
 
 export interface OptionSpec {
-  names: string[];
+  name: string;
+  aliases: string[];
   description?: string;
   multiple?: boolean;
   argument?: SingleArgumentSpec;
 }
 
 export const OptionSpec: z.ZodType<OptionSpec> = z.object({
-  names: z.array(z.string()).min(1),
+  name: z.string(),
+  aliases: z.array(z.union([
+    z.string().regex(/^--[\w-]+$/).startsWith("--"),
+    z.string().regex(/^-\w$/).startsWith("-").length(2),
+  ])).min(1),
   description: z.optional(z.string()),
   multiple: z.optional(z.boolean()),
   argument: z.optional(SingleArgumentSpec),

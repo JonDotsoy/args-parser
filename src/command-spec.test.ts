@@ -15,11 +15,7 @@ import {
   createSchemaValidation,
   parseArgs,
 } from "./command-spec.ts";
-import {
-  CommandParsedSpec,
-  CommandSpec,
-  OptionSpec,
-} from "./schemas/command-spec.ts";
+import { CommandParsedSpec, CommandSpec } from "./schemas/command-spec.ts";
 
 Deno.test("command-spec should build help dialog", async () => {
   const commandSpec: CommandSpec = {
@@ -110,7 +106,8 @@ Deno.test("command-spec should build help dialog with arguments and options", as
     ],
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "abc",
+        aliases: ["-a", "--abc"],
         description: "abc option",
       },
     ],
@@ -155,7 +152,8 @@ Deno.test("command-spec should build help dialog with arguments, options and sub
     ],
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "abc",
+        aliases: ["-a", "--abc"],
         description: "abc option",
       },
     ],
@@ -209,7 +207,8 @@ Deno.test("command-spec should build help dialog with arguments, options and sub
     ],
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "abc",
+        aliases: ["-a", "--abc"],
         description: "abc option",
       },
     ],
@@ -270,7 +269,8 @@ Deno.test("command-spec should build help dialog to the subcommand", async () =>
     ],
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "abc",
+        aliases: ["-a", "--abc"],
         description: "abc option",
       },
     ],
@@ -300,7 +300,8 @@ Deno.test("command-spec should build help dialog to not found command", async ()
     description: "I am description",
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "abc",
+        aliases: ["-a", "--abc"],
         description: "abc option",
       },
     ],
@@ -337,7 +338,8 @@ Deno.test("should parsing the arguments string to return the parsed command obje
     description: "I am description",
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "abc",
+        aliases: ["-a", "--abc"],
         description: "abc option",
       },
     ],
@@ -363,7 +365,8 @@ Deno.test("should parsing the arguments string with options", async () => {
     description: "I am description",
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "abc",
+        aliases: ["-a", "--abc"],
         description: "abc option",
       },
     ],
@@ -391,7 +394,8 @@ Deno.test("should parsing the arguments string at return an options with argumen
     description: "I am description",
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "abc",
+        aliases: ["-a", "--abc"],
         description: "abc option",
         argument: {
           name: "<abc>",
@@ -421,7 +425,8 @@ Deno.test("should parsing the arguments string at return an options with argumen
     description: "I am description",
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "abc",
+        aliases: ["-a", "--abc"],
         description: "abc option",
         multiple: true,
         argument: {
@@ -457,7 +462,8 @@ Deno.test("should parse arguments string and get the arguments", async () => {
     description: "I am description",
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "output",
+        aliases: ["-a", "--abc"],
         description: "abc option",
         multiple: true,
         argument: {
@@ -497,7 +503,8 @@ Deno.test("should parse argument string complex", () => {
     description: "I am description",
     options: [
       {
-        names: ["-a", "--abc"],
+        name: "output",
+        aliases: ["-a", "--abc"],
         description: "abc option",
         multiple: true,
         argument: {
@@ -528,7 +535,8 @@ Deno.test("invoke handler functions", async (t) => {
     name: "cli",
     options: [
       {
-        names: ["-o", "--output"],
+        name: "output",
+        aliases: ["-o", "--output"],
         argument: {
           name: "format",
         },
@@ -598,7 +606,8 @@ Deno.test("should make a schema validator from a command spec", () => {
     name: "cli",
     options: [
       {
-        names: ["-o", "--output"],
+        name: "output",
+        aliases: ["-o", "--output"],
         argument: {
           name: "format",
         },
@@ -632,13 +641,8 @@ Deno.test("should make a schema validator from a command spec", () => {
   assertExists(schemas);
   assertInstanceOf(schemas.optionSchema, z.ZodObject);
   assertInstanceOf(schemas.argumentsSchema, z.ZodTuple);
-  // console.log(schemas.optionSchema._def);
+  // console.log(schemas.optionSchema._def.shape());
   assertObjectMatch(schemas.optionSchema._def.shape(), {
-    o: {
-      _def: {
-        typeName: "ZodString",
-      },
-    },
     output: {
       _def: {
         typeName: "ZodString",
@@ -663,7 +667,59 @@ Deno.test("should make a argument parser", async () => {
     name: "cli",
     options: [
       {
-        names: ["-o", "--output"],
+        name: "output",
+        aliases: ["-o", "--output"],
+        argument: {
+          name: "format",
+        },
+      },
+    ],
+    subcommands: [
+      {
+        name: "user",
+        subcommands: [
+          {
+            name: "edit",
+            handler: handlerSpy,
+            arguments: [
+              {
+                name: "user_id",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  let error: unknown;
+  try {
+    const { validate } = await parseArgs(commandSpec, [
+      "--output",
+      "yaml",
+      "user",
+      "edit",
+    ]);
+    await validate();
+  } catch (ex) {
+    error = ex;
+  }
+
+  assertExists(error);
+  assertInstanceOf(error, Error);
+  assertMatch(error.message, /Missing user_id argument/);
+  assertExists(error.cause);
+  assertInstanceOf(error.cause, z.ZodError);
+});
+
+Deno.test("should make a argument parser", async () => {
+  const handlerSpy = spy();
+  const commandSpec: CommandSpec = {
+    name: "cli",
+    options: [
+      {
+        name: "output",
+        aliases: ["-o", "--output"],
         argument: {
           name: "format",
         },

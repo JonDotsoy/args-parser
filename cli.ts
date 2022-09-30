@@ -1,4 +1,4 @@
-import { CommandSpec } from "./command-spec.ts";
+import { CommandSpec } from "./src/schemas/command-spec.ts";
 
 const commandSpec: CommandSpec = {
   name: "cli.ts",
